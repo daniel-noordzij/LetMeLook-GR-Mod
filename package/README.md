@@ -21,6 +21,17 @@ it normally does, only the camera goes further.
 
 This is a client-side mod, only you need it and only you are impacted by it. 
 
+## AI usage disclosure and information
+
+- This mod **has been** vibe-coded.
+- This mod does **not** contain AI generated art.
+- The Lua was written with an LLM (Claude), working to a spec I wrote and under
+  my direction.
+- None of the game internals are guessed. Every class & property this mod
+  touches came straight out of the game's own header and object dumps, and all 3
+  of the camera clamps were measured in game with a read-only probe before any of
+  the real mod got written.
+
 ## Credits
 
 Camera internals mapped from the game's own header and object dumps. Thanks to
