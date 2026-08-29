@@ -19,12 +19,7 @@ because those clamps are there on purpose, so all of those shots still get frame
 the way the game intended. Your character's body also still twists only as far as
 it normally does, only the camera goes further.
 
-This is a client-side mod, only you need it and only you are impacted by it.
-
-## Install
-
-Install it through r2modman or the Thunderstore Mod Manager which will pull in
-the 2 dependencies for you (unreal_shimloader and the Grain Rot UE4SS overlay).
+This is a client-side mod, only you need it and only you are impacted by it. 
 
 ## Credits
 

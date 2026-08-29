@@ -2,7 +2,7 @@
     "name": "LetMeLook",
     "version_number": "1.0.0",
     "website_url": "https://github.com/daniel-noordzij/LetMeLook-GR-Mod",
-    "description": "Removes the vertical camera clamp so you can look straight up and straight down. Client-side only, nothing replicated or saved, no co-op coordination needed.",
+    "description": "Removes the vertical camera clamp so you can look straight up and straight down, that's it! Client-side only.",
     "dependencies": [
         "Thunderstore-unreal_shimloader-1.1.7",
         "Thunderstore-GrainRot_UE4SS-1.0.1"
