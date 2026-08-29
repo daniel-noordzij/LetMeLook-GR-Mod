@@ -1,93 +1,64 @@
-# LetMeLook-GR-Mod
+# LetMeLook
 
-A 'Grain Rot' mod to allow you to look completely up and down, removing the default clamp.
+A Grain Rot mod that removes the vertical camera clamp, so you can look straight
+up and straight down.
 
-The user-facing description lives in [package/README.md](package/README.md) — that
-is what Thunderstore renders. This file is for working on the mod.
+That's the whole mod. It is client-side, it changes nothing else, and it needs no
+coordination in co-op.
 
-## Layout
+## What it does
 
-```
-package/            everything that ships, and nothing else
-  manifest.json     name, version, dependencies
-  README.md         the Thunderstore page
-  CHANGELOG.md
-  icon.png          256x256, the mod icon Thunderstore shows
-  mod/
-    enabled.txt     empty; UE4SS enables a mod folder by its presence
-    Scripts/main.lua
+Grain Rot limits how far you can tilt the camera, and limits it further still
+when you are crouched or sprinting. This widens that range to the engine maximum
+in every stance.
 
-probe/              dev-only recon. NEVER ships.
-  LetMeLookProbe/   read-only dump of every camera clamp, on ALT+F6
-  results/          the actual measurements the numbers below came from
+It stops a tenth of a degree short of dead vertical, which is the engine's own
+default — that last tenth is where a camera clamp stops being a clamp and starts
+being a gimbal problem. In practice it is straight up and straight down.
 
-tools/
-  luasyntax.py      Lua syntax gate; exit 0 only if every file parses
-  deploy.sh         syntax-gated copy into an r2modman profile, then md5 both
-  package.sh        builds dist/LetMeLook-<version>.zip
-```
+Ragdoll, cutscene, soul-sequence and emote cameras are deliberately left alone,
+so those shots still frame the way the game intended. Your character's body also
+still twists only as far as it normally does; only the camera goes further.
 
-## Working on it
+## Install
 
-Deploy to the test profile and verify it landed:
+Install through r2modman or the Thunderstore Mod Manager and it will pull in the
+dependencies for you — `unreal_shimloader` and the Grain Rot UE4SS overlay.
 
-```bash
-bash tools/deploy.sh package/mod LetMeLookTest LetMeLook
-```
+## Co-op
 
-Build the upload zip:
+Nothing is replicated and nothing is saved. Every change lives in memory on your
+own machine and is gone when you quit, so the host and each guest can run this or
+not run it in any combination, with no coordination.
+
+## If something looks wrong
+
+Press **Alt+F6** in game. It writes a report to
+`Helden\Binaries\Win64\LetMeLook_state.txt` and changes nothing.
+
+That file, plus `LetMeLook.log` in the same folder, is what to attach to a bug
+report — between them they show every value the mod touched and whether the
+change actually took.
+
+## Building
 
 ```bash
 bash tools/package.sh
 ```
 
-Both gate on `tools/luasyntax.py`'s **own exit code** — never on a pipeline
-through `grep`, which tests grep's exit code and has shipped a broken file
-before. `package.sh` additionally refuses to build if `Scripts/` holds anything
-besides `main.lua`, so a probe cannot ship by accident.
+That produces `dist/LetMeLook-<version>.zip`, ready to upload to the **grain-rot**
+community on Thunderstore.
 
-There is no Lua interpreter on the dev machine; the gate uses the `luaparser`
-Python package in place of `luac -p`.
+To try a change in game, deploy it into an r2modman profile:
 
-## What was measured
+```bash
+bash tools/deploy.sh package/mod <profile-name> LetMeLook
+```
 
-Live on UE 5.7.4 (`++UE5+Release-5.7-CL-51494982`), 2026-08-29. Three pitch
-clamps are active at once:
+Both refuse to run if the mod does not parse. Everything that ships lives in
+`package/`; [package/README.md](package/README.md) is the text Thunderstore
+displays.
 
-| Source | Stock |
-|---|---|
-| `APlayerCameraManager.ViewPitchMin` / `ViewPitchMax` | -70 / +80 |
-| `UHeldenCameraSettings.CameraPitchMin` / `CameraPitchMax` | -60 / +90 |
-| `UHeldenCameraPreset.LimitPitch` (with `bLimitPitch` true) | per stance |
+## Licence
 
-The preset is swapped by stance — `Default_CameraPreset` standing (-80/+90),
-`Crouching_CameraPreset` crouched (-60/+90), `Sprinting_CameraPreset` sprinting
-(-60/+90). Which of the three is the *binding* clamp was never established and
-did not need to be: widening all three clears it regardless.
-
-Also confirmed: `manager.CameraArm` and `pawn:GetCameraArm()` are the same
-object; `arm.CameraSettings` and `UHeldenDataSingleton.CameraSettings` are the
-same asset instance (`/Game/Core/CameraSetings` — the typo is the real asset
-name); `PrevCampreset` is null during normal play.
-
-## Constraints this code is built around
-
-- **A wrapper around null is truthy.** `fullName(x) == ""` is the only test that
-  separates a real UObject from a wrapper around nothing.
-- **One `ExecuteInGameThread`, ever**, from a `LoopAsync` pump with an in-flight
-  guard. RE-UE4SS #1180 corrupts Lua registry refs when anything appends to the
-  engine-tick action vector from inside a drained callback. Keybind callbacks do
-  not run on the game thread either, so the keybind only sets a flag.
-- **The object array is walked at most once per second**, and nothing is cached
-  between passes — a rescan risks a race, but a held pointer across a level
-  change is a certainty.
-- **Every write is read back**, because a struct write that lands in a by-value
-  copy silently does nothing. `bLimitPitch = false` (a plain bool, and the game's
-  own idiom — `Cinematic_CameraPreset` ships that way) is the load-bearing write;
-  widening the `LimitPitch` vector is belt and braces.
-
-## Publishing
-
-Upload `dist/LetMeLook-<version>.zip` to the **grain-rot** community on
-Thunderstore. Dependencies are declared in `package/manifest.json`:
-`Thunderstore-unreal_shimloader-1.1.7` and `Thunderstore-GrainRot_UE4SS-1.0.1`.
+MIT — see [LICENSE](LICENSE).

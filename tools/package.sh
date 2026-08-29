@@ -56,7 +56,7 @@ if (width, height) != (256, 256):
 print("  256x256 PNG: OK")
 ' "$SRC/icon.png" || exit 1
 
-# Nothing but the mod may ship: no probes, no dev scripts.
+# Nothing but the mod may ship: no recon or dev scripts.
 EXTRA="$(find "$SRC/mod/Scripts" -type f ! -name 'main.lua' 2>/dev/null)"
 if [ -n "$EXTRA" ]; then
     echo "REFUSED: Scripts/ must contain only main.lua, but also has:" >&2
