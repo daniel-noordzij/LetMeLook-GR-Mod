@@ -1,0 +1,38 @@
+
+======== LetMeLook state   2026-08-29 10:40:00 ========
+target pitch range     -89.9 .. 89.9
+apply passes           219
+passes with no world   0
+values the game reset  2
+
+target                             status   was                    now
+ViewPitchMin                       already  -89.900001525879       -89.900001525879
+ViewPitchMax                       already  89.900001525879        89.900001525879
+CameraPitchMin                     already  -89.900001525879       -89.900001525879
+CameraPitchMax                     already  89.900001525879        89.900001525879
+CameraPreset_Default.bLimitPitch   already  false                  false
+CameraPreset_Default.LimitPitch    already  (-89.9, 89.9)          (-89.9, 89.9)
+CameraPreset_Sprint.bLimitPitch    already  false                  false
+CameraPreset_Sprint.LimitPitch     already  (-89.9, 89.9)          (-89.9, 89.9)
+CameraPreset_Crouch.bLimitPitch    already  false                  false
+CameraPreset_Crouch.LimitPitch     already  (-89.9, 89.9)          (-89.9, 89.9)
+CameraPreset_Prone.bLimitPitch     already  false                  false
+CameraPreset_Prone.LimitPitch      already  (-89.9, 89.9)          (-89.9, 89.9)
+live:Default_CameraPreset.bLimitPitch already  false                  false
+live:Default_CameraPreset.LimitPitch already  (-89.9, 89.9)          (-89.9, 89.9)
+live:Sprinting_CameraPreset.bLimitPitch already  false                  false
+live:Sprinting_CameraPreset.LimitPitch already  (-89.9, 89.9)          (-89.9, 89.9)
+live:Crouching_CameraPreset.bLimitPitch already  false                  false
+live:Crouching_CameraPreset.LimitPitch already  (-89.9, 89.9)          (-89.9, 89.9)
+
+status: written = we set it and the readback agrees
+        already = it was already correct this pass
+        REFUSED = the write did not take (tell the mod author)
+        missing = that property was not there to write
+
+-- live readback --
+  player 1 ViewPitch   -89.900001525879 .. 89.900001525879
+  CameraPitch          -89.900001525879 .. 89.900001525879
+  live preset          HeldenCameraPreset /Game/Gameplay/Camera/Default_CameraPreset.Default_CameraPreset
+  live bLimitPitch     false
+======== end of LetMeLook state ========

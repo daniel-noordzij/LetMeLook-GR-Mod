@@ -1,0 +1,11 @@
+# Keep LF in the working tree on every platform. Without this, Git's autocrlf
+# hands a Windows clone CRLF line endings, and a shell script whose shebang ends
+# in \r fails to run.
+*.sh   text eol=lf
+*.py   text eol=lf
+*.lua  text eol=lf
+*.md   text eol=lf
+*.json text eol=lf
+*.txt  text eol=lf
+
+*.png  binary

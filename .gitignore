@@ -1,0 +1,2 @@
+# Built Thunderstore upload zips. Rebuild with tools/package.sh.
+dist/
