@@ -466,68 +466,107 @@ local function dumpState()
 end
 
 -- ==========================================================================
--- The pump.
+-- THE HEARTBEAT. The game is our clock; there is no second thread.
 --
--- NEVER SCHEDULE THROUGH UE4SS. RE-UE4SS #1180 drains the engine-tick action
--- vector with erase_if under a recursive mutex, so an ExecuteInGameThread or
--- ExecuteWithDelay issued from inside a drained callback appends mid-iteration
--- and corrupts the stored Lua registry refs -- "Abort signal received", or
--- "Ref was not function", at random, worst on a slow or unfocused machine.
+-- Until 5 Sep 2026 this was a LoopAsync thread appending one
+-- ExecuteInGameThread per pass. Three "Abort signal received" crashes with
+-- one stack hash (4 Sep, 5 Sep 13:22, 5 Sep 14:53) -- the second with UE4SS's
+-- own log naming a hook's registry slot as overwritten -- established that on
+-- this build the LoopAsync thread writes the Lua registry (luaL_ref for the
+-- hand-off) with no lock while the game thread is writing it too. A settle
+-- gap narrows that window; it cannot close it. BetterInteraction's
+-- docs/DESIGN.md, 5 Sep 2026, has the evidence.
 --
--- So: exactly one ExecuteInGameThread in the whole file, made from a LoopAsync
--- thread, with one item in flight at a time so a game that falls behind DROPS
--- passes rather than stacking them.
+-- So the beat comes from the game: UKismetSystemLibrary:K2_SetTimer asks the
+-- world's timer manager to call, looping, a NATIVE parameterless
+-- APlayerController function that does nothing useful on a PC --
+-- ResetControllerDeadZones (a different one from BetterInteraction's, so the
+-- two mods never drive each other) -- and our RegisterHook on it IS the pump.
+-- Measured (BetterInteraction probe attack-15): exactly 1/PUMP_MS per second,
+-- across a world change, for a whole session.
 --
--- Keybind callbacks do not run on the game thread either. This one therefore
--- does no work at all -- it sets a flag, and the pump does the reading.
---
--- THE SETTLE GAP (5 Sep 2026). #1180 is not the only race here. Read out of
--- RE-UE4SS LuaMod.cpp at the shipped SHA e31aaaa6: the LoopAsync thread runs
--- its Lua WITHOUT m_thread_actions_mutex, ExecuteInGameThread takes its
--- luaL_ref on the hook state's registry BEFORE taking that mutex, and the game
--- thread luaL_unref's the previous callback's ref right after that callback
--- returns. get_function_ref in process_simple_actions sits OUTSIDE its try, so
--- a ref that comes back garbage throws through the engine tick uncaught:
--- "Abort signal received", with "Ref was not function" in the minidump. That
--- was the 4 Sep 2026 crash, with this mod and BetterInteraction both running
--- this pump shape; which one's ref it was is not established.
---
--- This callback used to clear inFlight as its FIRST statement, so the
--- LoopAsync thread could append -- a registry write from another thread --
--- while the callback was still running and before UE4SS unref'd it. Now:
--- inFlight clears LAST, and the LoopAsync body waits one full extra pass
--- after it sees the flag clear before it appends again. The body must stay
--- allocation-free (booleans and integers only): it too runs concurrently
--- with game-thread Lua in the same state.
+-- Armed per world from PlayerController:ClientRestart on the local controller
+-- (proven to hook on this build: CheatManagerEnablerMod uses it), and the
+-- mark is cleared by RegisterInitGameStatePostHook. The keybind still only
+-- sets a flag; the beat does the reading.
 -- ==========================================================================
 
+local BEAT_HOOK    = "/Script/Engine.PlayerController:ResetControllerDeadZones"
+local BEAT_FUNC    = "ResetControllerDeadZones"
+local RESTART_HOOK = "/Script/Engine.PlayerController:ClientRestart"
+local STATICS_PATH = "/Script/Engine.Default__KismetSystemLibrary"
+
 local pending  = false
-local inFlight = false
-local settled  = 0        -- LoopAsync passes seen with nothing in flight
 local ticks    = 0
+local beatArmedFor = nil
+local beatsThisMinute, beatMinuteAt = 0, 0
+
+local function heartbeat()
+    ticks = ticks + 1
+    local now = os.clock()
+    beatsThisMinute = beatsThisMinute + 1
+    if now - beatMinuteAt >= 60 then
+        if beatMinuteAt > 0 then
+            diag.write(string.format("heartbeat: %d beats in the last %.0f s", beatsThisMinute, now - beatMinuteAt))
+        end
+        beatMinuteAt, beatsThisMinute = now, 0
+    end
+
+    if pending then
+        pending = false
+        local ok, err = pcall(dumpState)
+        if not ok then log("state dump error: " .. tostring(err)) end
+    end
+
+    if ticks % APPLY_EVERY == 0 then
+        local ok, err = pcall(applyOnce)
+        if not ok then logOnce("apply:" .. tostring(err), "apply error: " .. tostring(err)) end
+    end
+end
+
+local function armHeartbeat(controller)
+    if not real(controller) then return end
+    local name = fullName(controller)
+    if name == beatArmedFor then return end
+    local statics = nil
+    pcall(function() statics = StaticFindObject(STATICS_PATH) end)
+    if not real(statics) then
+        logOnce("beat:nostatics", "HEARTBEAT: KismetSystemLibrary did not resolve; the mod cannot tick. REPORT THIS.")
+        return
+    end
+    local ok, err = pcall(function()
+        statics:K2_SetTimer(controller, BEAT_FUNC, PUMP_MS / 1000, true, false, 0.0, 0.0)
+    end)
+    if not ok then
+        logOnce("beat:settimer:" .. tostring(err), "HEARTBEAT: K2_SetTimer threw: " .. tostring(err) .. " -- the mod cannot tick. REPORT THIS.")
+        return
+    end
+    beatArmedFor = name
+    diag.write(string.format("heartbeat armed on %s: %s every %d ms", name:match("([^%.:]+)$") or name, BEAT_FUNC, PUMP_MS))
+end
+
+local beatHooked = pcall(function()
+    RegisterHook(BEAT_HOOK, function()
+        local ok, err = pcall(heartbeat)
+        if not ok then logOnce("beat:" .. tostring(err), "heartbeat failed: " .. tostring(err)) end
+    end)
+end)
 
 pcall(function()
-    LoopAsync(PUMP_MS, function()
-        if inFlight then settled = 0 return false end
-        settled = settled + 1
-        if settled < 2 then return false end   -- the settle gap, see above
-        inFlight = true
-        ExecuteInGameThread(function()
-            if pending then
-                pending = false
-                local ok, err = pcall(dumpState)
-                if not ok then log("state dump error: " .. tostring(err)) end
-            end
+    RegisterInitGameStatePostHook(function()
+        beatArmedFor = nil
+        diag.write("heartbeat: new GameState; will re-arm on the local controller")
+    end)
+end)
 
-            ticks = ticks + 1
-            if ticks % APPLY_EVERY == 0 then
-                local ok, err = pcall(applyOnce)
-                if not ok then logOnce("apply:" .. tostring(err), "apply error: " .. tostring(err)) end
-            end
-
-            inFlight = false      -- LAST, never first: see the settle gap
+local restartHooked = pcall(function()
+    RegisterHook(RESTART_HOOK, function(self)
+        pcall(function()
+            local controller = self:get()
+            local isLocal = nil
+            pcall(function() isLocal = controller:IsLocalController() end)
+            if isLocal == true then armHeartbeat(controller) end
         end)
-        return false
     end)
 end)
 
@@ -537,5 +576,9 @@ end)
 
 diag.write("---- " .. MOD .. " loaded ----")
 log("loaded. Look straight up and straight down.")
+log(beatHooked
+    and ("heartbeat hook registered on " .. BEAT_HOOK .. "; armed per world from "
+        .. (restartHooked and "ClientRestart" or "NOTHING -- ClientRestart would not hook. REPORT THIS."))
+    or "FATAL: the heartbeat hook would not register. NOTHING WILL EVER RUN -- report this")
 log(bound and "ALT+F6 writes a diagnostic report to " .. STATE_FILE .. " and changes nothing."
            or "ALT+F6 could not be registered; the mod still works, but you have no report key.")
