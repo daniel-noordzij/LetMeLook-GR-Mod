@@ -480,19 +480,39 @@ end
 --
 -- Keybind callbacks do not run on the game thread either. This one therefore
 -- does no work at all -- it sets a flag, and the pump does the reading.
+--
+-- THE SETTLE GAP (5 Sep 2026). #1180 is not the only race here. Read out of
+-- RE-UE4SS LuaMod.cpp at the shipped SHA e31aaaa6: the LoopAsync thread runs
+-- its Lua WITHOUT m_thread_actions_mutex, ExecuteInGameThread takes its
+-- luaL_ref on the hook state's registry BEFORE taking that mutex, and the game
+-- thread luaL_unref's the previous callback's ref right after that callback
+-- returns. get_function_ref in process_simple_actions sits OUTSIDE its try, so
+-- a ref that comes back garbage throws through the engine tick uncaught:
+-- "Abort signal received", with "Ref was not function" in the minidump. That
+-- was the 4 Sep 2026 crash, with this mod and BetterInteraction both running
+-- this pump shape; which one's ref it was is not established.
+--
+-- This callback used to clear inFlight as its FIRST statement, so the
+-- LoopAsync thread could append -- a registry write from another thread --
+-- while the callback was still running and before UE4SS unref'd it. Now:
+-- inFlight clears LAST, and the LoopAsync body waits one full extra pass
+-- after it sees the flag clear before it appends again. The body must stay
+-- allocation-free (booleans and integers only): it too runs concurrently
+-- with game-thread Lua in the same state.
 -- ==========================================================================
 
 local pending  = false
 local inFlight = false
+local settled  = 0        -- LoopAsync passes seen with nothing in flight
 local ticks    = 0
 
 pcall(function()
     LoopAsync(PUMP_MS, function()
-        if inFlight then return false end
+        if inFlight then settled = 0 return false end
+        settled = settled + 1
+        if settled < 2 then return false end   -- the settle gap, see above
         inFlight = true
         ExecuteInGameThread(function()
-            inFlight = false
-
             if pending then
                 pending = false
                 local ok, err = pcall(dumpState)
@@ -504,6 +524,8 @@ pcall(function()
                 local ok, err = pcall(applyOnce)
                 if not ok then logOnce("apply:" .. tostring(err), "apply error: " .. tostring(err)) end
             end
+
+            inFlight = false      -- LAST, never first: see the settle gap
         end)
         return false
     end)

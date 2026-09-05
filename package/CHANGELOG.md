@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+- Fixed a rare "Abort signal received" crash: the update loop now leaves a gap
+  before rescheduling itself, so it can no longer race UE4SS on the previous callback.
+
 ## 1.0.0
 
 First release.
